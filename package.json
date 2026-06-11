@@ -1,0 +1,32 @@
+{
+  "name": "crealo-qa-automation",
+  "version": "1.0.0",
+  "description": "Suite de automatización de pruebas E2E para la Landing Page de Crealo",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test":               "playwright test",
+    "test:headed":        "playwright test --headed",
+    "test:ui":            "playwright test --ui",
+    "test:debug":         "playwright test --debug",
+    "test:report":        "playwright show-report",
+    "test:chromium":      "playwright test --project=chromium",
+    "test:firefox":       "playwright test --project=firefox",
+    "test:webkit":        "playwright test --project=webkit",
+    "test:mobile":        "playwright test --project=Mobile-iPhone --project=Mobile-Android-Galaxy --project=Mobile-Android-Pixel",
+    "test:contacto":      "playwright test contacto.spec.js",
+    "test:responsive":    "playwright test responsive.spec.js",
+    "test:security":      "playwright test security_edge.spec.js",
+    "test:seo":           "playwright test seo_accessibility.spec.js",
+    "test:stress":        "playwright test stress.spec.js",
+    "test:k6-smoke":      "k6 run k6/load_test.js -e SCENARIO=smoke",
+    "test:k6-load":       "k6 run k6/load_test.js -e SCENARIO=load"
+  },
+  "keywords": ["playwright", "testing", "e2e", "qa", "automation", "crealo"],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@types/node": "^25.9.2"
+  }
+}

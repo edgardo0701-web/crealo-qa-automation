@@ -1,0 +1,27 @@
+name: k6 Performance Load Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      scenario:
+        description: 'Escenario de prueba (smoke o load)'
+        required: true
+        default: 'load'
+        type: choice
+        options:
+          - smoke
+          - load
+
+jobs:
+  k6-load-test:
+    name: Run k6 load test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@v4
+
+      - name: Instalar k6
+        uses: grafana/setup-k6-action@v1
+
+      - name: Ejecutar pruebas de k6
+        run: k6 run k6/load_test.js -e SCENARIO=${{ github.event.inputs.scenario }}
