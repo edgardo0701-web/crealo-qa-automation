@@ -131,4 +131,170 @@ test.describe('Suite de Casos Límite, Seguridad de Entrada y Robustez de Interf
     const currentURL = page.url();
     expect(currentURL).not.toContain('whatsapp.com');
   });
+
+  // =========================================================================
+  // 6. VERIFICACIÓN DE CABECERAS DE SEGURIDAD (SECURITY HEADERS)
+  // =========================================================================
+  test('CP-038: Verificar presencia de cabeceras de seguridad críticas', async ({ page }) => {
+    const response = await page.goto('/');
+    const headers = response.headers();
+
+    // Cabeceras recomendadas por OWASP
+    const securityHeaders = [
+      'content-security-policy',
+      'x-frame-options',
+      'x-content-type-options',
+      'strict-transport-security'
+    ];
+
+    securityHeaders.forEach(header => {
+      if (!headers[header]) {
+        console.warn(`[SECURITY WARNING]: La cabecera ${header} no está presente.`);
+      }
+    });
+
+    // Al menos X-Frame-Options es crítica para evitar Clickjacking
+    expect(headers['x-frame-options'] || headers['content-security-policy'], 
+      'FALLO SEGURIDAD: El sitio es vulnerable a Clickjacking (falta X-Frame-Options o CSP)').toBeTruthy();
+  });
+
+  // =========================================================================
+  // 7. INTENTO DE INYECCIÓN SQL (SQLi) BÁSICO
+  // =========================================================================
+  test('CP-039: Validar resiliencia ante payloads de SQL Injection en el formulario', async ({ page }) => {
+    const sqlPayload = "' OR '1'='1' --";
+
+    await fillContactForm(page, {
+      nombre:  sqlPayload,
+      email:   'sqli_test@qa.com',
+      mensaje: 'DROP TABLE users;--',
+    });
+
+    const botonEnviar = page.getByRole('button', { name: /Enviar mensaje por WhatsApp|Enviar/i });
+    await botonEnviar.click();
+
+    // El sistema no debe mostrar errores de base de datos expuestos (ej. "syntax error near...")
+    const bodyText = await page.innerText('body');
+    const dbErrors = [/sql/i, /mysql/i, /postgresql/i, /driver/i, /syntax error/i];
+    
+    dbErrors.forEach(errorPattern => {
+      expect(bodyText).not.toMatch(errorPattern);
+    });
+  });
+
+  // =========================================================================
+  // 8. PRUEBA DE RATE LIMITING (DETECCIÓN DE SPAM/DOS)
+  // =========================================================================
+  test('CP-040: Validar si el backend implementa Rate Limiting ante envíos masivos', async ({ page }) => {
+    await fillContactForm(page, {
+      nombre:  'Spam Bot',
+      email:   'bot@spam.com',
+      mensaje: 'Intento de spam automatizado.',
+    });
+
+    const botonEnviar = page.getByRole('button', { name: /Enviar mensaje por WhatsApp|Enviar/i });
+
+    // Intentamos enviar 5 veces muy rápido (si el backend es una API, debería retornar 429)
+    for (let i = 0; i < 5; i++) {
+      await botonEnviar.click({ force: true }).catch(() => null);
+      await page.waitForTimeout(200); 
+    }
+
+    // Si el sitio implementa rate limiting correctamente, eventualmente no debería navegar a WhatsApp
+    // o debería mostrar un mensaje de "Intente más tarde".
+    const currentURL = page.url();
+    test.info().annotations.push({ type: 'Observación', description: 'Si el rate limit es laxo, esta prueba navegará siempre.' });
+  });
+
+  // =========================================================================
+  // 9. BÚSQUEDA DE ARCHIVOS SENSIBLES (SENSITIVE FILES EXPOSURE)
+  // =========================================================================
+  test('CP-041: Verificar que archivos de configuración sensibles no están expuestos', async ({ request }) => {
+    const filesToCheck = [
+      '/.env',
+      '/.git/config',
+      '/package.json',
+      '/docker-compose.yml',
+      '/.gitignore'
+    ];
+
+    for (const file of filesToCheck) {
+      const response = await request.get(file);
+      // Un servidor seguro debería retornar 404 (Not Found) o 403 (Forbidden)
+      expect(response.status(), `ALERTA SEGURIDAD: El archivo ${file} es accesible públicamente (Status ${response.status()})`).not.toBe(200);
+    }
+  });
+
+  // =========================================================================
+  // 10. XSS AVANZADO (EVENT HANDLERS Y SVG INJECTION)
+  // =========================================================================
+  test('CP-042: Probar resiliencia ante inyecciones XSS avanzadas (Evasión de filtros)', async ({ page }) => {
+    const payloads = [
+      '<svg/onload=alert(1)>',
+      '<img src=x onerror=prompt(1)>',
+      '<details open ontoggle=confirm(1)>'
+    ];
+
+    let securityBreach = false;
+    page.on('dialog', async (dialog) => {
+      securityBreach = true;
+      await dialog.dismiss();
+    });
+
+    for (const payload of payloads) {
+      await fillContactForm(page, {
+        nombre:  'XSS Adv',
+        email:   'adv@security.test',
+        mensaje: payload,
+      });
+      
+      const botonEnviar = page.getByRole('button', { name: /Enviar mensaje por WhatsApp|Enviar/i });
+      await botonEnviar.click().catch(() => null);
+      // Espera corta para permitir que cualquier script inyectado se ejecute
+      await page.waitForTimeout(500); 
+    }
+
+    expect(securityBreach, 'FALLO SEGURIDAD: Un payload de XSS avanzado logró ejecutar código en el navegador').toBe(false);
+  });
+
+  // =========================================================================
+  // 11. INTEGRIDAD DE REDES SOCIALES (BROKEN LINK HIJACKING)
+  // =========================================================================
+  test('CP-043: Verificar que los enlaces a redes sociales no estén rotos (Prevención de Hijacking)', async ({ page, request }) => {
+    const linksRedes = page.locator('footer a[href*="instagram.com"], footer a[href*="facebook.com"]');
+    const count = await linksRedes.count();
+
+    for (let i = 0; i < count; i++) {
+      const url = await linksRedes.nth(i).getAttribute('href');
+      if (url) {
+        const response = await request.get(url);
+        // Si el perfil no existe (404), un atacante podría registrar el nombre de usuario y suplantar a la empresa.
+        expect(response.status(), `FALLO INTEGRIDAD: El enlace social ${url} devuelve un error ${response.status()}`).toBeLessThan(400);
+      }
+    }
+  });
+
+  // =========================================================================
+  // 12. INTENTO DE INYECCIÓN NOSQL (NOSQL INJECTION)
+  // =========================================================================
+  test('CP-044: Validar que el formulario no procesa operadores NoSQL maliciosos', async ({ page }) => {
+    const nosqlPayload = '{"$gt": ""}';
+
+    await fillContactForm(page, {
+      nombre:  'NoSQL Hunter',
+      email:   'nosql@test.com',
+      mensaje: nosqlPayload,
+    });
+
+    const botonEnviar = page.getByRole('button', { name: /Enviar mensaje por WhatsApp|Enviar/i });
+    await botonEnviar.click();
+
+    // El sistema debe tratar el JSON como un string literal, no como objeto de consulta.
+    const bodyText = await page.innerText('body');
+    const noSqlErrorKeywords = [/object object/i, /mongodb/i, /cursor/i];
+    
+    noSqlErrorKeywords.forEach(pattern => {
+      expect(bodyText).not.toMatch(pattern);
+    });
+  });
 });

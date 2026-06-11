@@ -1,0 +1,30 @@
+name: OWASP ZAP Security Scan
+
+on:
+  workflow_dispatch: # Permite ejecutarlo manualmente desde GitHub Actions
+  schedule:
+    # Se ejecuta automáticamente todos los lunes a las 3:00 AM UTC
+    - cron: '0 3 * * 1'
+
+jobs:
+  zap_scan:
+    runs-on: ubuntu-latest
+    name: Escaneo DAST en Producción
+    steps:
+      - name: Checkout del repositorio
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Ejecutar OWASP ZAP Baseline Scan
+        uses: zaproxy/action-baseline@v0.12.0
+        with:
+          # URL objetivo a escanear (Tu Landing Page en producción)
+          target: 'https://crealowebpage-production.up.railway.app/'
+          
+          # No fallar el workflow si encuentra alertas (es normal tener warnings en baseline)
+          # El reporte HTML se generará de todas formas.
+          fail_action: false 
+          
+          # Habilitar reglas alfa para un escaneo más profundo
+          cmd_options: '-a'
